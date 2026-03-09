@@ -1,30 +1,26 @@
-# SnippetManager
+SnippetManager 🦀
 
-Snippet Manager (Rust) 🦀
+A lightweight Rust desktop tool for storing, organizing, and searching code snippets locally.
 
-A lightweight developer tool for storing and searching code snippets locally.
+This project is an early prototype (v0.0.2) of a Rust-based snippet manager designed to help developers quickly save and retrieve useful pieces of code.
 
-This project is an early prototype (v0.0.1) of a Rust-based snippet manager designed to help developers quickly save, organize, and retrieve useful pieces of code.
+The long-term goal is to build a fast, modern, Rust-only desktop application for managing personal code libraries.
 
-The goal of the project is to eventually evolve into a fast, modern, Rust-only desktop application for managing personal code libraries.
+Features (v0.0.2)
 
-Features (v0.0.1)
+Desktop GUI application
 
-Current prototype includes:
+Create and edit snippets
 
-Add new code snippets
-
-List stored snippets
+Browse stored snippets
 
 Search snippets by keyword
-
-View snippet details
 
 Delete snippets
 
 Local JSON storage
 
-Snippets contain:
+Each snippet contains:
 
 Title
 
@@ -38,63 +34,25 @@ Unique ID
 
 All data is stored locally in a snippets.json file.
 
-Example Workflow
+Running the App
 
-Add a snippet:
+Run the application with:
+cargo run
 
-cargo run -- add
-
-List all snippets:
-
-cargo run -- list
-
-Search snippets:
-
-cargo run -- search rust
-
-View snippet:
-
-cargo run -- view SNIPPET_ID
-
-Delete snippet:
-
-cargo run -- delete SNIPPET_ID
-
-Motivation
-
-Developers constantly search for previously written code.
-This project explores building a minimal and fast snippet manager using pure Rust.
-
-The initial version focuses on validating the core functionality before introducing a graphical interface.
-
-Roadmap
-
-Future versions may include:
-
-Desktop GUI
-
-Syntax highlighting
-
-Instant search
-
-Tag filtering
-
-Copy-to-clipboard
-
-Import/export snippets
-
-Better snippet organization
+This launches the Snippet Manager desktop interface where you can create, edit, search, and delete snippets.
 
 Tech Stack
 
 Rust
 
-Serde (JSON serialization)
+egui / eframe
+
+Serde (JSON)
 
 UUID
 
 Version
 
-Current version: v0.0.1
+Current version: v0.0.2
 
-CLI prototype for testing core functionality.
+First desktop GUI prototype of Snippet Manager.
