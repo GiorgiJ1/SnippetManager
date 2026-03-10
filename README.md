@@ -2,18 +2,20 @@
 
 A lightweight Rust desktop tool for storing, organizing, and searching code snippets locally.
 
-This project is an early prototype (**v0.0.2**) of a Rust-based snippet manager designed to help developers quickly save and retrieve useful pieces of code.
+This project is an early prototype (**v0.0.3**) of a Rust-based snippet manager designed to help developers quickly save, edit, and retrieve useful pieces of code.
 
 The long-term goal is to build a **fast, modern, Rust-only desktop application** for managing personal code libraries.
 
 ---
 
-## Features (v0.0.2)
+## Features (v0.0.3)
 
 - Desktop GUI application  
 - Create and edit snippets  
 - Browse stored snippets  
-- Search snippets by keyword  
+- **Fuzzy search for faster snippet discovery**  
+- **Copy code to clipboard**  
+- **Keyboard shortcuts for common actions**  
 - Delete snippets  
 - Local JSON storage  
 
@@ -35,10 +37,9 @@ Run the application with:
 
 ```bash
 cargo run
-
 ```
 
-This launches the Snippet Manager desktop interface where you can create, edit, search, and delete snippets.
+## This launches the Snippet Manager desktop interface where you can create, edit, search, copy, and delete snippets.
 
 Tech Stack
 
@@ -50,8 +51,12 @@ Serde (JSON)
 
 UUID
 
+arboard (clipboard support)
+
+fuzzy-matcher (fuzzy search)
+
 Version
 
-Current version: v0.0.2
+### Current version: v0.0.3 ⚙️
 
-First desktop GUI prototype of Snippet Manager.
+### Improved desktop GUI with fuzzy search, clipboard copy functionality, and keyboard shortcuts. ⌨️
