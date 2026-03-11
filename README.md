@@ -61,6 +61,6 @@ UUID
 
 ## Version
 
-###Current version: v0.0.4 ⚙️
+### Current version: v0.0.4 ⚙️
 
-###Adds syntax highlighting, snippet import/export, and tag filtering, making SnippetManager a more complete developer utility. ⌨️
+### Adds syntax highlighting, snippet import/export, and tag filtering, making SnippetManager a more complete developer utility. ⌨️
