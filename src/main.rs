@@ -1,10 +1,16 @@
 use arboard::Clipboard;
 use eframe::egui;
+use eframe::egui::text::{LayoutJob, TextFormat};
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
+use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
+use syntect::easy::HighlightLines;
+use syntect::highlighting::{Color as SyntectColor, FontStyle, Theme, ThemeSet};
+use syntect::parsing::SyntaxSet;
+use syntect::util::LinesWithEndings;
 use uuid::Uuid;
 
 const FILE_PATH: &str = "snippets.json";
@@ -40,10 +46,22 @@ struct SnippetApp {
     tags_input: String,
     code_input: String,
     matcher: SkimMatcherV2,
+    active_tag: Option<String>,
+    syntax_set: SyntaxSet,
+    theme: Theme,
 }
 
 impl Default for SnippetApp {
     fn default() -> Self {
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let theme_set = ThemeSet::load_defaults();
+        let theme = theme_set
+            .themes
+            .get("base16-ocean.dark")
+            .cloned()
+            .or_else(|| theme_set.themes.values().next().cloned())
+            .unwrap_or_default();
+
         let snippets = load_snippets();
 
         let mut app = Self {
@@ -56,6 +74,9 @@ impl Default for SnippetApp {
             tags_input: String::new(),
             code_input: String::new(),
             matcher: SkimMatcherV2::default(),
+            active_tag: None,
+            syntax_set,
+            theme,
         };
 
         if let Some(first) = app.snippets.first().cloned() {
@@ -70,9 +91,19 @@ impl Default for SnippetApp {
 impl SnippetApp {
     fn filtered_indices(&self) -> Vec<usize> {
         let q = self.search.trim();
+        let active_tag = self.active_tag.as_deref();
 
         if q.is_empty() {
-            return (0..self.snippets.len()).collect();
+            return self
+                .snippets
+                .iter()
+                .enumerate()
+                .filter(|(_, snippet)| match active_tag {
+                    Some(tag) => snippet.tags.iter().any(|t| t.eq_ignore_ascii_case(tag)),
+                    None => true,
+                })
+                .map(|(i, _)| i)
+                .collect();
         }
 
         let mut scored: Vec<(usize, i64)> = self
@@ -80,6 +111,12 @@ impl SnippetApp {
             .iter()
             .enumerate()
             .filter_map(|(i, snippet)| {
+                if let Some(tag) = active_tag {
+                    if !snippet.tags.iter().any(|t| t.eq_ignore_ascii_case(tag)) {
+                        return None;
+                    }
+                }
+
                 let tags = snippet.tags.join(" ");
                 let haystack = format!(
                     "{} {} {} {}",
@@ -124,16 +161,21 @@ impl SnippetApp {
             return;
         };
 
+        let new_title = self.title_input.trim().to_string();
+        let new_language = self.language_input.trim().to_string();
+        let new_tags: Vec<String> = self
+            .tags_input
+            .split(',')
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .collect();
+        let new_code = self.code_input.clone();
+
         if let Some(snippet) = self.snippets.iter_mut().find(|s| s.id == id) {
-            snippet.title = self.title_input.trim().to_string();
-            snippet.language = self.language_input.trim().to_string();
-            snippet.tags = self
-                .tags_input
-                .split(',')
-                .map(|t| t.trim().to_string())
-                .filter(|t| !t.is_empty())
-                .collect();
-            snippet.code = self.code_input.clone();
+            snippet.title = new_title;
+            snippet.language = new_language;
+            snippet.tags = new_tags;
+            snippet.code = new_code;
 
             self.save_all();
             self.status = "Snippet saved".to_string();
@@ -184,12 +226,79 @@ impl SnippetApp {
         }
     }
 
-    fn save_all(&mut self) {
-        match save_snippets(&self.snippets) {
-            Ok(_) => {}
+    fn import_snippets(&mut self) {
+        let Some(path) = FileDialog::new()
+            .add_filter("JSON files", &["json"])
+            .pick_file()
+        else {
+            return;
+        };
+
+        match fs::read_to_string(&path) {
+            Ok(content) => match serde_json::from_str::<Vec<Snippet>>(&content) {
+                Ok(imported) => {
+                    let mut added = 0usize;
+
+                    for snippet in imported {
+                        if self.snippets.iter().any(|s| s.id == snippet.id) {
+                            continue;
+                        }
+
+                        self.snippets.push(snippet);
+                        added += 1;
+                    }
+
+                    self.save_all();
+
+                    if added == 0 {
+                        self.status = "No new snippets were imported".to_string();
+                    } else {
+                        self.status = format!("Imported {} snippet(s)", added);
+                    }
+
+                    if self.selected_id.is_none() {
+                        if let Some(first) = self.snippets.first().cloned() {
+                            self.selected_id = Some(first.id);
+                            self.load_into_editor(&first);
+                        }
+                    }
+                }
+                Err(e) => {
+                    self.status = format!("Import parse error: {}", e);
+                }
+            },
             Err(e) => {
-                self.status = format!("Save error: {}", e);
+                self.status = format!("Import read error: {}", e);
             }
+        }
+    }
+
+    fn export_snippets(&mut self) {
+        let Some(path) = FileDialog::new()
+            .set_file_name("snippets_export.json")
+            .save_file()
+        else {
+            return;
+        };
+
+        match serde_json::to_string_pretty(&self.snippets) {
+            Ok(json) => match fs::write(path, json) {
+                Ok(_) => {
+                    self.status = "Snippets exported".to_string();
+                }
+                Err(e) => {
+                    self.status = format!("Export write error: {}", e);
+                }
+            },
+            Err(e) => {
+                self.status = format!("Export serialization error: {}", e);
+            }
+        }
+    }
+
+    fn save_all(&mut self) {
+        if let Err(e) = save_snippets(&self.snippets) {
+            self.status = format!("Save error: {}", e);
         }
     }
 
@@ -256,6 +365,101 @@ impl SnippetApp {
             None => "None".to_string(),
         }
     }
+
+    fn syntect_to_egui_color(color: SyntectColor) -> egui::Color32 {
+        egui::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a)
+    }
+
+    fn syntax_layout_job(
+        syntax_set: &SyntaxSet,
+        theme: &Theme,
+        language: &str,
+        code: &str,
+        wrap_width: f32,
+    ) -> LayoutJob {
+        let syntax = syntax_set
+            .find_syntax_by_token(language)
+            .or_else(|| syntax_set.find_syntax_by_extension(language))
+            .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
+
+        let mut highlighter = HighlightLines::new(syntax, theme);
+        let mut job = LayoutJob::default();
+        job.wrap.max_width = wrap_width;
+
+        for line in LinesWithEndings::from(code) {
+            match highlighter.highlight_line(line, syntax_set) {
+                Ok(ranges) => {
+                    for (style, text) in ranges {
+                        let mut format = TextFormat {
+                            font_id: egui::FontId::monospace(14.0),
+                            color: Self::syntect_to_egui_color(style.foreground),
+                            ..Default::default()
+                        };
+
+                        if style.font_style.contains(FontStyle::BOLD) {
+                            format.font_id = egui::FontId::new(
+                                14.0,
+                                egui::FontFamily::Name("monospace".into()),
+                            );
+                        }
+
+                        if style.font_style.contains(FontStyle::ITALIC) {
+                            format.italics = true;
+                        }
+
+                        if style.font_style.contains(FontStyle::UNDERLINE) {
+                            format.underline = egui::Stroke::new(
+                                1.0,
+                                Self::syntect_to_egui_color(style.foreground),
+                            );
+                        }
+
+                        job.append(text, 0.0, format);
+                    }
+                }
+                Err(_) => {
+                    job.append(
+                        line,
+                        0.0,
+                        TextFormat {
+                            font_id: egui::FontId::monospace(14.0),
+                            color: egui::Color32::LIGHT_GRAY,
+                            ..Default::default()
+                        },
+                    );
+                }
+            }
+        }
+
+        job
+    }
+
+    fn code_preview(snippet: &Snippet) -> String {
+        let code_preview = snippet
+            .code
+            .lines()
+            .find(|line| !line.trim().is_empty())
+            .unwrap_or("")
+            .trim();
+
+        if code_preview.len() > 45 {
+            format!("{}...", &code_preview[..45])
+        } else {
+            code_preview.to_string()
+        }
+    }
+
+    fn collect_all_tags(&self) -> Vec<String> {
+        let mut tags: Vec<String> = self
+            .snippets
+            .iter()
+            .flat_map(|s| s.tags.iter().cloned())
+            .collect();
+
+        tags.sort_by_key(|t| t.to_lowercase());
+        tags.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+        tags
+    }
 }
 
 impl eframe::App for SnippetApp {
@@ -266,7 +470,7 @@ impl eframe::App for SnippetApp {
             ui.add_space(4.0);
 
             ui.horizontal(|ui| {
-                ui.heading("Snippet Manager v0.0.3");
+                ui.heading("Snippet Manager v0.0.4");
                 ui.separator();
 
                 ui.label("Search");
@@ -290,11 +494,19 @@ impl eframe::App for SnippetApp {
                 if ui.button("Copy Code").clicked() {
                     self.copy_code();
                 }
+
+                if ui.button("Import").clicked() {
+                    self.import_snippets();
+                }
+
+                if ui.button("Export").clicked() {
+                    self.export_snippets();
+                }
             });
 
-            ui.add_space(4.0);
+            ui.add_space(6.0);
 
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label("Shortcuts:");
                 ui.monospace("Ctrl+N");
                 ui.label("New");
@@ -306,22 +518,58 @@ impl eframe::App for SnippetApp {
                 ui.label("Copy code");
             });
 
+            ui.add_space(6.0);
+
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Tag filter:");
+
+                let all_tags = self.collect_all_tags();
+
+                if ui
+                    .selectable_label(self.active_tag.is_none(), "All")
+                    .clicked()
+                {
+                    self.active_tag = None;
+                }
+
+                for tag in all_tags {
+                    let selected = self
+                        .active_tag
+                        .as_ref()
+                        .map(|t| t.eq_ignore_ascii_case(&tag))
+                        .unwrap_or(false);
+
+                    if ui.selectable_label(selected, tag.clone()).clicked() {
+                        if selected {
+                            self.active_tag = None;
+                        } else {
+                            self.active_tag = Some(tag);
+                        }
+                    }
+                }
+            });
+
             ui.add_space(2.0);
         });
 
         egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label(format!("Status: {}", self.status));
                 ui.separator();
                 ui.label(format!("Total snippets: {}", self.snippets.len()));
                 ui.separator();
                 ui.label(format!("Selected: {}", self.selected_snippet_label()));
+                ui.separator();
+                ui.label(format!(
+                    "Active tag: {}",
+                    self.active_tag.as_deref().unwrap_or("None")
+                ));
             });
         });
 
         egui::SidePanel::left("left_panel")
             .resizable(true)
-            .default_width(300.0)
+            .default_width(320.0)
             .show(ctx, |ui| {
                 ui.heading("Snippets");
                 ui.separator();
@@ -334,6 +582,7 @@ impl eframe::App for SnippetApp {
                 }
 
                 let mut clicked_id: Option<Uuid> = None;
+                let mut clicked_tag: Option<String> = None;
 
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     for index in filtered {
@@ -356,18 +605,7 @@ impl eframe::App for SnippetApp {
                             Self::format_tags(&snippet.tags)
                         );
 
-                        let code_preview = snippet
-                            .code
-                            .lines()
-                            .find(|line| !line.trim().is_empty())
-                            .unwrap_or("")
-                            .trim();
-
-                        let code_preview = if code_preview.len() > 45 {
-                            format!("{}...", &code_preview[..45])
-                        } else {
-                            code_preview.to_string()
-                        };
+                        let code_preview = Self::code_preview(snippet);
 
                         egui::Frame::group(ui.style()).show(ui, |ui| {
                             ui.set_width(ui.available_width());
@@ -393,6 +631,17 @@ impl eframe::App for SnippetApp {
                                         .color(ui.visuals().weak_text_color()),
                                 );
                             }
+
+                            if !snippet.tags.is_empty() {
+                                ui.add_space(4.0);
+                                ui.horizontal_wrapped(|ui| {
+                                    for tag in &snippet.tags {
+                                        if ui.small_button(format!("#{tag}")).clicked() {
+                                            clicked_tag = Some(tag.clone());
+                                        }
+                                    }
+                                });
+                            }
                         });
 
                         ui.add_space(6.0);
@@ -401,6 +650,10 @@ impl eframe::App for SnippetApp {
 
                 if let Some(id) = clicked_id {
                     self.select_snippet(id);
+                }
+
+                if let Some(tag) = clicked_tag {
+                    self.active_tag = Some(tag);
                 }
             });
 
@@ -414,7 +667,10 @@ impl eframe::App for SnippetApp {
             ui.add_space(6.0);
 
             ui.label("Language");
-            ui.add(egui::TextEdit::singleline(&mut self.language_input));
+            ui.add(
+                egui::TextEdit::singleline(&mut self.language_input)
+                    .hint_text("rust, cpp, js, py..."),
+            );
 
             ui.add_space(6.0);
 
@@ -433,10 +689,27 @@ impl eframe::App for SnippetApp {
                 }
             });
 
+            let syntax_set = &self.syntax_set;
+            let theme = &self.theme;
+            let language = self.language_input.clone();
+
+            let mut layouter = move |ui: &egui::Ui, text: &str, wrap_width: f32| {
+                let job = SnippetApp::syntax_layout_job(
+                    syntax_set,
+                    theme,
+                    &language,
+                    text,
+                    wrap_width,
+                );
+                ui.fonts(|fonts| fonts.layout_job(job))
+            };
+
             ui.add(
                 egui::TextEdit::multiline(&mut self.code_input)
-                    .desired_rows(28)
-                    .desired_width(f32::INFINITY),
+                    .font(egui::TextStyle::Monospace)
+                    .desired_rows(22)
+                    .desired_width(f32::INFINITY)
+                    .layouter(&mut layouter),
             );
         });
     }
@@ -466,12 +739,12 @@ fn save_snippets(snippets: &[Snippet]) -> Result<(), String> {
 
 fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([1200.0, 760.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([1280.0, 820.0]),
         ..Default::default()
     };
 
     eframe::run_native(
-        "Snippet Manager v0.0.3",
+        "Snippet Manager v0.0.4",
         options,
         Box::new(|_cc| Ok(Box::new(SnippetApp::default()))),
     )
