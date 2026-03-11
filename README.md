@@ -2,22 +2,25 @@
 
 A lightweight Rust desktop tool for storing, organizing, and searching code snippets locally.
 
-This project is an early prototype (**v0.0.3**) of a Rust-based snippet manager designed to help developers quickly save, edit, and retrieve useful pieces of code.
+This project is an early prototype (**v0.0.4**) of a Rust-based snippet manager designed to help developers quickly save, edit, and retrieve useful pieces of code.
 
 The long-term goal is to build a **fast, modern, Rust-only desktop application** for managing personal code libraries.
 
 ---
 
-## Features (v0.0.3)
+## Features (v0.0.4)
 
-- Desktop GUI application  
-- Create and edit snippets  
-- Browse stored snippets  
-- **Fuzzy search for faster snippet discovery**  
-- **Copy code to clipboard**  
-- **Keyboard shortcuts for common actions**  
-- Delete snippets  
-- Local JSON storage  
+- Desktop GUI application
+- Create and edit snippets
+- Browse stored snippets
+- **Fuzzy search for fast snippet discovery**
+- **Syntax-highlighted code editor**
+- **Copy code to clipboard**
+- **Keyboard shortcuts for common actions**
+- **Import / export snippets (JSON)**
+- **Tag filtering**
+- Delete snippets
+- Local JSON storage
 
 Each snippet contains:
 
@@ -38,25 +41,26 @@ Run the application with:
 ```bash
 cargo run
 ```
-
-## This launches the Snippet Manager desktop interface where you can create, edit, search, copy, and delete snippets.
-
-Tech Stack
+##Tech Stack
 
 Rust
 
-egui / eframe
+egui / eframe (GUI framework)
 
-Serde (JSON)
-
-UUID
-
-arboard (clipboard support)
+syntect (syntax highlighting)
 
 fuzzy-matcher (fuzzy search)
 
-Version
+arboard (clipboard support)
 
-### Current version: v0.0.3 ⚙️
+rfd (file dialogs)
 
-### Improved desktop GUI with fuzzy search, clipboard copy functionality, and keyboard shortcuts. ⌨️
+Serde (JSON serialization)
+
+UUID
+
+## Version
+
+###Current version: v0.0.4 ⚙️
+
+###Adds syntax highlighting, snippet import/export, and tag filtering, making SnippetManager a more complete developer utility. ⌨️
