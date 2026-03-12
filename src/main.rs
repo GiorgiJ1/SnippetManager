@@ -49,6 +49,9 @@ struct SnippetApp {
     active_tag: Option<String>,
     syntax_set: SyntaxSet,
     theme: Theme,
+    quick_search_open: bool,
+    quick_search_query: String,
+    quick_selected_index: usize,
 }
 
 impl Default for SnippetApp {
@@ -77,6 +80,9 @@ impl Default for SnippetApp {
             active_tag: None,
             syntax_set,
             theme,
+            quick_search_open: false,
+            quick_search_query: String::new(),
+            quick_selected_index: 0,
         };
 
         if let Some(first) = app.snippets.first().cloned() {
@@ -90,7 +96,11 @@ impl Default for SnippetApp {
 
 impl SnippetApp {
     fn filtered_indices(&self) -> Vec<usize> {
-        let q = self.search.trim();
+        self.filtered_indices_for_query(&self.search)
+    }
+
+    fn filtered_indices_for_query(&self, query: &str) -> Vec<usize> {
+        let q = query.trim();
         let active_tag = self.active_tag.as_deref();
 
         if q.is_empty() {
@@ -129,6 +139,10 @@ impl SnippetApp {
 
         scored.sort_by(|a, b| b.1.cmp(&a.1));
         scored.into_iter().map(|(i, _)| i).collect()
+    }
+
+    fn quick_search_results(&self) -> Vec<usize> {
+        self.filtered_indices_for_query(&self.quick_search_query)
     }
 
     fn load_into_editor(&mut self, snippet: &Snippet) {
@@ -302,18 +316,57 @@ impl SnippetApp {
         }
     }
 
+    fn open_quick_search(&mut self) {
+        self.quick_search_open = true;
+        self.quick_search_query.clear();
+        self.quick_selected_index = 0;
+        self.status = "Quick search opened".to_string();
+    }
+
+    fn close_quick_search(&mut self) {
+        self.quick_search_open = false;
+        self.quick_selected_index = 0;
+    }
+
+    fn activate_quick_search_selection(&mut self) {
+        let results = self.quick_search_results();
+
+        if results.is_empty() {
+            self.status = "No snippet found".to_string();
+            return;
+        }
+
+        let selected = self.quick_selected_index.min(results.len().saturating_sub(1));
+        let snippet_id = self.snippets[results[selected]].id;
+        self.select_snippet(snippet_id);
+        self.close_quick_search();
+        self.status = "Snippet opened from quick search".to_string();
+    }
+
     fn handle_shortcuts(&mut self, ctx: &egui::Context) {
         let mut new_pressed = false;
         let mut save_pressed = false;
         let mut delete_pressed = false;
         let mut copy_pressed = false;
+        let mut quick_search_pressed = false;
 
         ctx.input(|i| {
             new_pressed = i.modifiers.ctrl && i.key_pressed(egui::Key::N);
             save_pressed = i.modifiers.ctrl && i.key_pressed(egui::Key::S);
             delete_pressed = i.modifiers.ctrl && i.key_pressed(egui::Key::D);
             copy_pressed = i.modifiers.ctrl && i.key_pressed(egui::Key::C);
+            quick_search_pressed =
+                i.modifiers.ctrl && i.modifiers.shift && i.key_pressed(egui::Key::Space);
         });
+
+        if quick_search_pressed {
+            self.open_quick_search();
+            return;
+        }
+
+        if self.quick_search_open {
+            return;
+        }
 
         if new_pressed {
             self.create_new_snippet();
@@ -329,6 +382,47 @@ impl SnippetApp {
 
         if copy_pressed {
             self.copy_code();
+        }
+    }
+
+    fn handle_quick_search_keys(&mut self, ctx: &egui::Context, result_len: usize) {
+        let mut escape_pressed = false;
+        let mut enter_pressed = false;
+        let mut arrow_down = false;
+        let mut arrow_up = false;
+
+        ctx.input(|i| {
+            escape_pressed = i.key_pressed(egui::Key::Escape);
+            enter_pressed = i.key_pressed(egui::Key::Enter);
+            arrow_down = i.key_pressed(egui::Key::ArrowDown);
+            arrow_up = i.key_pressed(egui::Key::ArrowUp);
+        });
+
+        if escape_pressed {
+            self.close_quick_search();
+            self.status = "Quick search closed".to_string();
+            return;
+        }
+
+        if result_len == 0 {
+            self.quick_selected_index = 0;
+            return;
+        }
+
+        if arrow_down {
+            self.quick_selected_index = (self.quick_selected_index + 1) % result_len;
+        }
+
+        if arrow_up {
+            if self.quick_selected_index == 0 {
+                self.quick_selected_index = result_len - 1;
+            } else {
+                self.quick_selected_index -= 1;
+            }
+        }
+
+        if enter_pressed {
+            self.activate_quick_search_selection();
         }
     }
 
@@ -397,10 +491,8 @@ impl SnippetApp {
                         };
 
                         if style.font_style.contains(FontStyle::BOLD) {
-                            format.font_id = egui::FontId::new(
-                                14.0,
-                                egui::FontFamily::Name("monospace".into()),
-                            );
+                            format.font_id =
+                                egui::FontId::new(14.0, egui::FontFamily::Monospace);
                         }
 
                         if style.font_style.contains(FontStyle::ITALIC) {
@@ -470,7 +562,7 @@ impl eframe::App for SnippetApp {
             ui.add_space(4.0);
 
             ui.horizontal(|ui| {
-                ui.heading("Snippet Manager v0.0.4");
+                ui.heading("Snippet Manager v0.0.5");
                 ui.separator();
 
                 ui.label("Search");
@@ -502,6 +594,10 @@ impl eframe::App for SnippetApp {
                 if ui.button("Export").clicked() {
                     self.export_snippets();
                 }
+
+                if ui.button("Quick Search").clicked() {
+                    self.open_quick_search();
+                }
             });
 
             ui.add_space(6.0);
@@ -516,6 +612,8 @@ impl eframe::App for SnippetApp {
                 ui.label("Delete");
                 ui.monospace("Ctrl+C");
                 ui.label("Copy code");
+                ui.monospace("Ctrl+Shift+Space");
+                ui.label("Quick search");
             });
 
             ui.add_space(6.0);
@@ -712,6 +810,110 @@ impl eframe::App for SnippetApp {
                     .layouter(&mut layouter),
             );
         });
+
+        if self.quick_search_open {
+            let results = self.quick_search_results();
+
+            if !results.is_empty() && self.quick_selected_index >= results.len() {
+                self.quick_selected_index = results.len() - 1;
+            }
+
+            self.handle_quick_search_keys(ctx, results.len());
+
+            egui::Window::new("Quick Snippet Search")
+                .collapsible(false)
+                .resizable(false)
+                .default_width(520.0)
+                .anchor(egui::Align2::CENTER_TOP, [0.0, 80.0])
+                .show(ctx, |ui| {
+                    ui.label("Search snippets instantly");
+                    let response = ui.add(
+                        egui::TextEdit::singleline(&mut self.quick_search_query)
+                            .hint_text("Type snippet title, language, tags, or code..."),
+                    );
+                    response.request_focus();
+
+                    ui.add_space(6.0);
+                    ui.separator();
+                    ui.add_space(4.0);
+
+                    if results.is_empty() {
+                        ui.label("No snippets found");
+                    } else {
+                        egui::ScrollArea::vertical()
+                            .max_height(260.0)
+                            .show(ui, |ui| {
+                                for (display_index, snippet_index) in results.iter().enumerate() {
+                                    let snippet = self.snippets[*snippet_index].clone();
+                                    let selected = display_index == self.quick_selected_index;
+
+                                    let title = if snippet.title.trim().is_empty() {
+                                        "Untitled"
+                                    } else {
+                                        &snippet.title
+                                    };
+
+                                    let meta = format!(
+                                        "{}  |  {}",
+                                        if snippet.language.trim().is_empty() {
+                                            "unknown"
+                                        } else {
+                                            &snippet.language
+                                        },
+                                        Self::format_tags(&snippet.tags)
+                                    );
+
+                                    let preview = Self::code_preview(&snippet);
+
+                                    egui::Frame::group(ui.style()).show(ui, |ui| {
+                                        ui.set_width(ui.available_width());
+
+                                        if ui
+                                            .selectable_label(
+                                                selected,
+                                                egui::RichText::new(title).strong(),
+                                            )
+                                            .clicked()
+                                        {
+                                            self.quick_selected_index = display_index;
+                                            self.activate_quick_search_selection();
+                                        }
+
+                                        ui.label(
+                                            egui::RichText::new(meta)
+                                                .small()
+                                                .color(ui.visuals().weak_text_color()),
+                                        );
+
+                                        if !preview.is_empty() {
+                                            ui.label(
+                                                egui::RichText::new(preview)
+                                                    .small()
+                                                    .italics()
+                                                    .color(ui.visuals().weak_text_color()),
+                                            );
+                                        }
+                                    });
+
+                                    ui.add_space(4.0);
+                                }
+                            });
+                    }
+
+                    ui.add_space(6.0);
+                    ui.separator();
+                    ui.add_space(4.0);
+
+                    ui.horizontal_wrapped(|ui| {
+                        ui.monospace("↑ ↓");
+                        ui.label("Navigate");
+                        ui.monospace("Enter");
+                        ui.label("Open");
+                        ui.monospace("Esc");
+                        ui.label("Close");
+                    });
+                });
+        }
     }
 }
 
@@ -744,7 +946,7 @@ fn main() -> Result<(), eframe::Error> {
     };
 
     eframe::run_native(
-        "Snippet Manager v0.0.4",
+        "Snippet Manager v0.0.5",
         options,
         Box::new(|_cc| Ok(Box::new(SnippetApp::default()))),
     )
