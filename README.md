@@ -1,36 +1,47 @@
 # SnippetManager 🦀
 
-A lightweight Rust desktop tool for storing, organizing, and searching code snippets locally.
+A modern Rust desktop application for storing, organizing, and reusing code snippets locally.
 
-This project is an early prototype (**v0.0.4**) of a Rust-based snippet manager designed to help developers quickly save, edit, and retrieve useful pieces of code.
+SnippetManager is a developer-focused snippet manager built entirely in Rust. It is designed to help developers quickly save, edit, search, and reuse useful pieces of code through a fast desktop interface.
 
-The long-term goal is to build a **fast, modern, Rust-only desktop application** for managing personal code libraries.
+The goal of the project is to grow into a polished, Rust-only productivity tool for managing personal code libraries and reusable snippet workflows.
 
 ---
 
-## Features (v0.0.4)
+## Features (v0.1.0)
 
 - Desktop GUI application
-- Create and edit snippets
-- Browse stored snippets
-- **Fuzzy search for fast snippet discovery**
-- **Syntax-highlighted code editor**
-- **Copy code to clipboard**
-- **Keyboard shortcuts for common actions**
-- **Import / export snippets (JSON)**
-- **Tag filtering**
-- Delete snippets
+- Create, edit, duplicate, and delete snippets
+- Organize snippets by folders
+- Pin / favorite important snippets
+- Browse snippets in a multi-panel workspace
+- Fuzzy search for fast snippet discovery
+- Quick search popup for faster navigation
+- Syntax-highlighted code editor
+- View / edit modes
+- Line numbers in the editor
+- Copy code to clipboard
+- Copy snippets as Markdown code blocks
+- Template placeholders like `${name}` for reusable snippets
+- Smart rendered copy from templates
+- Keyboard shortcuts for common actions
+- Import / export snippets in JSON format
 - Local JSON storage
 
-Each snippet contains:
+Each snippet can include:
 
-- Title  
-- Programming language  
-- Tags  
-- Code content  
-- Unique ID  
+- Title
+- Description
+- Folder
+- Programming language
+- Tags
+- Code content
+- Unique ID
+- Favorite state
+- Created / updated timestamps
 
-All data is stored locally in a **`snippets.json`** file.
+All snippet data is stored locally in **`snippets.json`**.  
+App state such as folders and recent items is stored in **`snippet_manager_state.json`**.
 
 ---
 
@@ -41,26 +52,24 @@ Run the application with:
 ```bash
 cargo run
 ```
-##Tech Stack
+## Tech Stack
 
 Rust
 
-egui / eframe (GUI framework)
+egui / eframe
 
-syntect (syntax highlighting)
+syntect
 
-fuzzy-matcher (fuzzy search)
+fuzzy-matcher
 
-arboard (clipboard support)
+arboard
 
-rfd (file dialogs)
+rfd
 
-Serde (JSON serialization)
+Serde
 
 UUID
 
 ## Version
-
-### Current version: v0.0.4 ⚙️
-
-### Adds syntax highlighting, snippet import/export, and tag filtering, making SnippetManager a more complete developer utility. ⌨️
+### Current version: v0.1.0 ⚙️
+#### Adds a more polished desktop experience with folders, favorites, duplicate actions, improved editor workflow, smart copy options, and reusable snippet templates. ⌨️
