@@ -28,7 +28,7 @@ impl Snippet {
     fn new() -> Self {
         Self {
             id: Uuid::new_v4(),
-            title: "New Snippet".to_string(),
+            title: "Untitled".to_string(),
             language: "rust".to_string(),
             tags: Vec::new(),
             code: String::new(),
@@ -52,6 +52,7 @@ struct SnippetApp {
     quick_search_open: bool,
     quick_search_query: String,
     quick_selected_index: usize,
+    style_applied: bool,
 }
 
 impl Default for SnippetApp {
@@ -83,6 +84,7 @@ impl Default for SnippetApp {
             quick_search_open: false,
             quick_search_query: String::new(),
             quick_selected_index: 0,
+            style_applied: false,
         };
 
         if let Some(first) = app.snippets.first().cloned() {
@@ -95,6 +97,59 @@ impl Default for SnippetApp {
 }
 
 impl SnippetApp {
+    fn apply_notion_style(&mut self, ctx: &egui::Context) {
+        if self.style_applied {
+            return;
+        }
+
+        let mut style = (*ctx.style()).clone();
+
+        style.spacing.item_spacing = egui::vec2(10.0, 10.0);
+        style.spacing.button_padding = egui::vec2(12.0, 8.0);
+        style.spacing.window_margin = egui::Margin::same(16.0);
+        style.spacing.menu_margin = egui::Margin::same(10.0);
+        style.visuals = egui::Visuals::light();
+
+        style.visuals.override_text_color = Some(egui::Color32::from_rgb(45, 45, 45));
+        style.visuals.panel_fill = egui::Color32::from_rgb(251, 251, 249);
+        style.visuals.window_fill = egui::Color32::from_rgb(255, 255, 255);
+        style.visuals.extreme_bg_color = egui::Color32::from_rgb(245, 245, 242);
+        style.visuals.faint_bg_color = egui::Color32::from_rgb(247, 247, 245);
+        style.visuals.code_bg_color = egui::Color32::from_rgb(248, 248, 246);
+
+        style.visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(250, 250, 248);
+        style.visuals.widgets.noninteractive.bg_stroke =
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(232, 232, 228));
+
+        style.visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(255, 255, 255);
+        style.visuals.widgets.inactive.bg_stroke =
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(230, 230, 226));
+
+        style.visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(244, 244, 241);
+        style.visuals.widgets.hovered.bg_stroke =
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(219, 219, 214));
+
+        style.visuals.widgets.active.bg_fill = egui::Color32::from_rgb(238, 238, 234);
+        style.visuals.widgets.active.bg_stroke =
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(210, 210, 205));
+
+        style.visuals.selection.bg_fill = egui::Color32::from_rgb(225, 232, 255);
+        style.visuals.selection.stroke =
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(120, 150, 255));
+
+        style.visuals.window_rounding = egui::Rounding::same(14.0);
+        style.visuals.menu_rounding = egui::Rounding::same(12.0);
+
+        style.visuals.widgets.noninteractive.rounding = egui::Rounding::same(10.0);
+        style.visuals.widgets.inactive.rounding = egui::Rounding::same(10.0);
+        style.visuals.widgets.hovered.rounding = egui::Rounding::same(10.0);
+        style.visuals.widgets.active.rounding = egui::Rounding::same(10.0);
+        style.visuals.widgets.open.rounding = egui::Rounding::same(10.0);
+
+        ctx.set_style(style);
+        self.style_applied = true;
+    }
+
     fn filtered_indices(&self) -> Vec<usize> {
         self.filtered_indices_for_query(&self.search)
     }
@@ -186,7 +241,11 @@ impl SnippetApp {
         let new_code = self.code_input.clone();
 
         if let Some(snippet) = self.snippets.iter_mut().find(|s| s.id == id) {
-            snippet.title = new_title;
+            snippet.title = if new_title.is_empty() {
+                "Untitled".to_string()
+            } else {
+                new_title
+            };
             snippet.language = new_language;
             snippet.tags = new_tags;
             snippet.code = new_code;
@@ -491,8 +550,7 @@ impl SnippetApp {
                         };
 
                         if style.font_style.contains(FontStyle::BOLD) {
-                            format.font_id =
-                                egui::FontId::new(14.0, egui::FontFamily::Monospace);
+                            format.font_id = egui::FontId::new(14.0, egui::FontFamily::Monospace);
                         }
 
                         if style.font_style.contains(FontStyle::ITALIC) {
@@ -534,8 +592,8 @@ impl SnippetApp {
             .unwrap_or("")
             .trim();
 
-        if code_preview.len() > 45 {
-            format!("{}...", &code_preview[..45])
+        if code_preview.len() > 50 {
+            format!("{}...", &code_preview[..50])
         } else {
             code_preview.to_string()
         }
@@ -552,263 +610,399 @@ impl SnippetApp {
         tags.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
         tags
     }
+
+    fn tag_button(ui: &mut egui::Ui, label: &str, active: bool) -> egui::Response {
+        let fill = if active {
+            egui::Color32::from_rgb(229, 236, 255)
+        } else {
+            egui::Color32::from_rgb(244, 244, 241)
+        };
+
+        let stroke = if active {
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(135, 160, 255))
+        } else {
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(228, 228, 223))
+        };
+
+        ui.add(
+            egui::Button::new(egui::RichText::new(label).size(12.0))
+                .fill(fill)
+                .stroke(stroke)
+                .rounding(egui::Rounding::same(999.0)),
+        )
+    }
+
+    fn action_button(ui: &mut egui::Ui, label: &str) -> egui::Response {
+        ui.add(
+            egui::Button::new(label)
+                .fill(egui::Color32::from_rgb(255, 255, 255))
+                .stroke(egui::Stroke::new(
+                    1.0,
+                    egui::Color32::from_rgb(226, 226, 221),
+                ))
+                .rounding(egui::Rounding::same(10.0)),
+        )
+    }
+
+    fn secondary_text() -> egui::Color32 {
+        egui::Color32::from_rgb(120, 120, 115)
+    }
 }
 
 impl eframe::App for SnippetApp {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        self.apply_notion_style(ctx);
         self.handle_shortcuts(ctx);
 
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            ui.add_space(4.0);
+        egui::TopBottomPanel::top("top_panel")
+            .exact_height(92.0)
+            .show(ctx, |ui| {
+                ui.add_space(10.0);
 
-            ui.horizontal(|ui| {
-                ui.heading("Snippet Manager v0.0.5");
-                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        ui.label(
+                            egui::RichText::new("SnippetManager")
+                                .size(24.0)
+                                .strong(),
+                        );
+                        ui.label(
+                            egui::RichText::new("A cleaner Rust snippet workspace")
+                                .size(13.0)
+                                .color(Self::secondary_text()),
+                        );
+                    });
 
-                ui.label("Search");
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.search)
-                        .hint_text("fuzzy search: qs, rgx, srv"),
-                );
+                    ui.with_layout(
+                        egui::Layout::right_to_left(egui::Align::Center),
+                        |ui| {
+                            if Self::action_button(ui, "Quick Search").clicked() {
+                                self.open_quick_search();
+                            }
 
-                if ui.button("New").clicked() {
-                    self.create_new_snippet();
-                }
+                            if Self::action_button(ui, "Export").clicked() {
+                                self.export_snippets();
+                            }
 
-                if ui.button("Save").clicked() {
-                    self.save_current();
-                }
+                            if Self::action_button(ui, "Import").clicked() {
+                                self.import_snippets();
+                            }
 
-                if ui.button("Delete").clicked() {
-                    self.delete_current();
-                }
+                            if Self::action_button(ui, "Delete").clicked() {
+                                self.delete_current();
+                            }
 
-                if ui.button("Copy Code").clicked() {
-                    self.copy_code();
-                }
+                            if Self::action_button(ui, "Save").clicked() {
+                                self.save_current();
+                            }
 
-                if ui.button("Import").clicked() {
-                    self.import_snippets();
-                }
+                            if Self::action_button(ui, "New").clicked() {
+                                self.create_new_snippet();
+                            }
+                        },
+                    );
+                });
 
-                if ui.button("Export").clicked() {
-                    self.export_snippets();
-                }
+                ui.add_space(10.0);
 
-                if ui.button("Quick Search").clicked() {
-                    self.open_quick_search();
-                }
+                ui.horizontal(|ui| {
+                    ui.add_sized(
+                        [280.0, 34.0],
+                        egui::TextEdit::singleline(&mut self.search)
+                            .hint_text("Search snippets..."),
+                    );
+
+                    ui.label(
+                        egui::RichText::new("Ctrl+Shift+Space")
+                            .size(12.0)
+                            .color(Self::secondary_text()),
+                    );
+                    ui.label(
+                        egui::RichText::new("opens quick search")
+                            .size(12.0)
+                            .color(Self::secondary_text()),
+                    );
+                });
             });
 
-            ui.add_space(6.0);
-
-            ui.horizontal_wrapped(|ui| {
-                ui.label("Shortcuts:");
-                ui.monospace("Ctrl+N");
-                ui.label("New");
-                ui.monospace("Ctrl+S");
-                ui.label("Save");
-                ui.monospace("Ctrl+D");
-                ui.label("Delete");
-                ui.monospace("Ctrl+C");
-                ui.label("Copy code");
-                ui.monospace("Ctrl+Shift+Space");
-                ui.label("Quick search");
+        egui::TopBottomPanel::bottom("bottom_panel")
+            .exact_height(34.0)
+            .show(ctx, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(
+                        egui::RichText::new(format!("Status: {}", self.status))
+                            .size(12.0)
+                            .color(Self::secondary_text()),
+                    );
+                    ui.separator();
+                    ui.label(
+                        egui::RichText::new(format!("Snippets: {}", self.snippets.len()))
+                            .size(12.0)
+                            .color(Self::secondary_text()),
+                    );
+                    ui.separator();
+                    ui.label(
+                        egui::RichText::new(format!("Selected: {}", self.selected_snippet_label()))
+                            .size(12.0)
+                            .color(Self::secondary_text()),
+                    );
+                    ui.separator();
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "Tag: {}",
+                            self.active_tag.as_deref().unwrap_or("All")
+                        ))
+                        .size(12.0)
+                        .color(Self::secondary_text()),
+                    );
+                });
             });
-
-            ui.add_space(6.0);
-
-            ui.horizontal_wrapped(|ui| {
-                ui.label("Tag filter:");
-
-                let all_tags = self.collect_all_tags();
-
-                if ui
-                    .selectable_label(self.active_tag.is_none(), "All")
-                    .clicked()
-                {
-                    self.active_tag = None;
-                }
-
-                for tag in all_tags {
-                    let selected = self
-                        .active_tag
-                        .as_ref()
-                        .map(|t| t.eq_ignore_ascii_case(&tag))
-                        .unwrap_or(false);
-
-                    if ui.selectable_label(selected, tag.clone()).clicked() {
-                        if selected {
-                            self.active_tag = None;
-                        } else {
-                            self.active_tag = Some(tag);
-                        }
-                    }
-                }
-            });
-
-            ui.add_space(2.0);
-        });
-
-        egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.label(format!("Status: {}", self.status));
-                ui.separator();
-                ui.label(format!("Total snippets: {}", self.snippets.len()));
-                ui.separator();
-                ui.label(format!("Selected: {}", self.selected_snippet_label()));
-                ui.separator();
-                ui.label(format!(
-                    "Active tag: {}",
-                    self.active_tag.as_deref().unwrap_or("None")
-                ));
-            });
-        });
 
         egui::SidePanel::left("left_panel")
             .resizable(true)
             .default_width(320.0)
             .show(ctx, |ui| {
-                ui.heading("Snippets");
-                ui.separator();
-
-                let filtered = self.filtered_indices();
-
-                if filtered.is_empty() {
-                    ui.label("No snippets found");
-                    return;
-                }
-
-                let mut clicked_id: Option<Uuid> = None;
-                let mut clicked_tag: Option<String> = None;
-
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    for index in filtered {
-                        let snippet = &self.snippets[index];
-                        let selected = self.selected_id == Some(snippet.id);
-
-                        let title = if snippet.title.trim().is_empty() {
-                            "Untitled"
-                        } else {
-                            &snippet.title
-                        };
-
-                        let meta = format!(
-                            "{}  |  {}",
-                            if snippet.language.trim().is_empty() {
-                                "unknown"
-                            } else {
-                                &snippet.language
-                            },
-                            Self::format_tags(&snippet.tags)
-                        );
-
-                        let code_preview = Self::code_preview(snippet);
-
-                        egui::Frame::group(ui.style()).show(ui, |ui| {
-                            ui.set_width(ui.available_width());
-
-                            if ui
-                                .selectable_label(selected, egui::RichText::new(title).strong())
-                                .clicked()
-                            {
-                                clicked_id = Some(snippet.id);
-                            }
-
+                egui::Frame::none()
+                    .fill(egui::Color32::from_rgb(247, 247, 244))
+                    .inner_margin(egui::Margin::same(14.0))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
                             ui.label(
-                                egui::RichText::new(meta)
-                                    .small()
-                                    .color(ui.visuals().weak_text_color()),
+                                egui::RichText::new("Library")
+                                    .size(18.0)
+                                    .strong(),
                             );
-
-                            if !code_preview.is_empty() {
-                                ui.label(
-                                    egui::RichText::new(code_preview)
-                                        .small()
-                                        .italics()
-                                        .color(ui.visuals().weak_text_color()),
-                                );
-                            }
-
-                            if !snippet.tags.is_empty() {
-                                ui.add_space(4.0);
-                                ui.horizontal_wrapped(|ui| {
-                                    for tag in &snippet.tags {
-                                        if ui.small_button(format!("#{tag}")).clicked() {
-                                            clicked_tag = Some(tag.clone());
-                                        }
-                                    }
-                                });
-                            }
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.label(
+                                        egui::RichText::new(format!("{}", self.snippets.len()))
+                                            .size(12.0)
+                                            .color(Self::secondary_text()),
+                                    );
+                                },
+                            );
                         });
 
                         ui.add_space(6.0);
-                    }
-                });
 
-                if let Some(id) = clicked_id {
-                    self.select_snippet(id);
-                }
+                        ui.horizontal_wrapped(|ui| {
+                            let all_selected = self.active_tag.is_none();
+                            if Self::tag_button(ui, "All", all_selected).clicked() {
+                                self.active_tag = None;
+                            }
 
-                if let Some(tag) = clicked_tag {
-                    self.active_tag = Some(tag);
-                }
+                            for tag in self.collect_all_tags() {
+                                let selected = self
+                                    .active_tag
+                                    .as_ref()
+                                    .map(|t| t.eq_ignore_ascii_case(&tag))
+                                    .unwrap_or(false);
+
+                                if Self::tag_button(ui, &tag, selected).clicked() {
+                                    if selected {
+                                        self.active_tag = None;
+                                    } else {
+                                        self.active_tag = Some(tag);
+                                    }
+                                }
+                            }
+                        });
+
+                        ui.add_space(12.0);
+
+                        let filtered = self.filtered_indices();
+
+                        if filtered.is_empty() {
+                            ui.add_space(20.0);
+                            ui.label(
+                                egui::RichText::new("No snippets found")
+                                    .size(14.0)
+                                    .color(Self::secondary_text()),
+                            );
+                            return;
+                        }
+
+                        let mut clicked_id: Option<Uuid> = None;
+                        let mut clicked_tag: Option<String> = None;
+
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            for index in filtered {
+                                let snippet = &self.snippets[index];
+                                let selected = self.selected_id == Some(snippet.id);
+
+                                let title = if snippet.title.trim().is_empty() {
+                                    "Untitled"
+                                } else {
+                                    &snippet.title
+                                };
+
+                                let language = if snippet.language.trim().is_empty() {
+                                    "unknown"
+                                } else {
+                                    &snippet.language
+                                };
+
+                                let preview = Self::code_preview(snippet);
+
+                                let fill = if selected {
+                                    egui::Color32::from_rgb(235, 240, 255)
+                                } else {
+                                    egui::Color32::from_rgb(255, 255, 255)
+                                };
+
+                                let stroke = if selected {
+                                    egui::Stroke::new(1.0, egui::Color32::from_rgb(145, 165, 255))
+                                } else {
+                                    egui::Stroke::new(1.0, egui::Color32::from_rgb(232, 232, 227))
+                                };
+
+                                egui::Frame::none()
+                                    .fill(fill)
+                                    .stroke(stroke)
+                                    .rounding(egui::Rounding::same(14.0))
+                                    .inner_margin(egui::Margin::same(12.0))
+                                    .show(ui, |ui| {
+                                        if ui
+                                            .selectable_label(
+                                                selected,
+                                                egui::RichText::new(title).size(15.0).strong(),
+                                            )
+                                            .clicked()
+                                        {
+                                            clicked_id = Some(snippet.id);
+                                        }
+
+                                        ui.label(
+                                            egui::RichText::new(language)
+                                                .size(12.0)
+                                                .color(Self::secondary_text()),
+                                        );
+
+                                        if !preview.is_empty() {
+                                            ui.label(
+                                                egui::RichText::new(preview)
+                                                    .size(12.0)
+                                                    .italics()
+                                                    .color(Self::secondary_text()),
+                                            );
+                                        }
+
+                                        if !snippet.tags.is_empty() {
+                                            ui.add_space(4.0);
+                                            ui.horizontal_wrapped(|ui| {
+                                                for tag in &snippet.tags {
+                                                    if Self::tag_button(ui, tag, false).clicked() {
+                                                        clicked_tag = Some(tag.clone());
+                                                    }
+                                                }
+                                            });
+                                        }
+                                    });
+
+                                ui.add_space(8.0);
+                            }
+                        });
+
+                        if let Some(id) = clicked_id {
+                            self.select_snippet(id);
+                        }
+
+                        if let Some(tag) = clicked_tag {
+                            self.active_tag = Some(tag);
+                        }
+                    });
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Editor");
-            ui.separator();
+            egui::Frame::none()
+                .fill(egui::Color32::from_rgb(255, 255, 255))
+                .inner_margin(egui::Margin::same(18.0))
+                .rounding(egui::Rounding::same(16.0))
+                .stroke(egui::Stroke::new(
+                    1.0,
+                    egui::Color32::from_rgb(236, 236, 231),
+                ))
+                .show(ui, |ui| {
+                    ui.add_space(2.0);
 
-            ui.label("Title");
-            ui.add(egui::TextEdit::singleline(&mut self.title_input));
+                    ui.label(
+                        egui::RichText::new("Title")
+                            .size(12.0)
+                            .color(Self::secondary_text()),
+                    );
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.title_input)
+                            .hint_text("Untitled snippet"),
+                    );
 
-            ui.add_space(6.0);
+                    ui.add_space(6.0);
 
-            ui.label("Language");
-            ui.add(
-                egui::TextEdit::singleline(&mut self.language_input)
-                    .hint_text("rust, cpp, js, py..."),
-            );
+                    ui.horizontal(|ui| {
+                        ui.vertical(|ui| {
+                            ui.label(
+                                egui::RichText::new("Language")
+                                    .size(12.0)
+                                    .color(Self::secondary_text()),
+                            );
+                            ui.add_sized(
+                                [180.0, 32.0],
+                                egui::TextEdit::singleline(&mut self.language_input)
+                                    .hint_text("rust"),
+                            );
+                        });
 
-            ui.add_space(6.0);
+                        ui.vertical(|ui| {
+                            ui.label(
+                                egui::RichText::new("Tags")
+                                    .size(12.0)
+                                    .color(Self::secondary_text()),
+                            );
+                            ui.add_sized(
+                                [320.0, 32.0],
+                                egui::TextEdit::singleline(&mut self.tags_input)
+                                    .hint_text("rust, async, algorithm"),
+                            );
+                        });
+                    });
 
-            ui.label("Tags");
-            ui.add(
-                egui::TextEdit::singleline(&mut self.tags_input)
-                    .hint_text("rust, algorithm, async"),
-            );
+                    ui.add_space(10.0);
 
-            ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("Code")
+                                .size(12.0)
+                                .color(Self::secondary_text()),
+                        );
 
-            ui.horizontal(|ui| {
-                ui.label("Code");
-                if ui.button("Copy Current Code").clicked() {
-                    self.copy_code();
-                }
-            });
+                        if Self::action_button(ui, "Copy").clicked() {
+                            self.copy_code();
+                        }
+                    });
 
-            let syntax_set = &self.syntax_set;
-            let theme = &self.theme;
-            let language = self.language_input.clone();
+                    let syntax_set = &self.syntax_set;
+                    let theme = &self.theme;
+                    let language = self.language_input.clone();
 
-            let mut layouter = move |ui: &egui::Ui, text: &str, wrap_width: f32| {
-                let job = SnippetApp::syntax_layout_job(
-                    syntax_set,
-                    theme,
-                    &language,
-                    text,
-                    wrap_width,
-                );
-                ui.fonts(|fonts| fonts.layout_job(job))
-            };
+                    let mut layouter = move |ui: &egui::Ui, text: &str, wrap_width: f32| {
+                        let job = SnippetApp::syntax_layout_job(
+                            syntax_set,
+                            theme,
+                            &language,
+                            text,
+                            wrap_width,
+                        );
+                        ui.fonts(|fonts| fonts.layout_job(job))
+                    };
 
-            ui.add(
-                egui::TextEdit::multiline(&mut self.code_input)
-                    .font(egui::TextStyle::Monospace)
-                    .desired_rows(22)
-                    .desired_width(f32::INFINITY)
-                    .layouter(&mut layouter),
-            );
+                    ui.add(
+                        egui::TextEdit::multiline(&mut self.code_input)
+                            .font(egui::TextStyle::Monospace)
+                            .desired_rows(28)
+                            .desired_width(f32::INFINITY)
+                            .layouter(&mut layouter),
+                    );
+                });
         });
 
         if self.quick_search_open {
@@ -823,94 +1017,117 @@ impl eframe::App for SnippetApp {
             egui::Window::new("Quick Snippet Search")
                 .collapsible(false)
                 .resizable(false)
-                .default_width(520.0)
-                .anchor(egui::Align2::CENTER_TOP, [0.0, 80.0])
+                .default_width(560.0)
+                .anchor(egui::Align2::CENTER_TOP, [0.0, 90.0])
                 .show(ctx, |ui| {
-                    ui.label("Search snippets instantly");
+                    ui.label(
+                        egui::RichText::new("Jump to a snippet")
+                            .size(20.0)
+                            .strong(),
+                    );
+                    ui.label(
+                        egui::RichText::new("Type title, language, tag, or code")
+                            .size(12.0)
+                            .color(Self::secondary_text()),
+                    );
+
                     let response = ui.add(
                         egui::TextEdit::singleline(&mut self.quick_search_query)
-                            .hint_text("Type snippet title, language, tags, or code..."),
+                            .hint_text("Search..."),
                     );
                     response.request_focus();
 
-                    ui.add_space(6.0);
-                    ui.separator();
-                    ui.add_space(4.0);
+                    ui.add_space(8.0);
 
                     if results.is_empty() {
-                        ui.label("No snippets found");
+                        ui.label(
+                            egui::RichText::new("No snippets found")
+                                .size(13.0)
+                                .color(Self::secondary_text()),
+                        );
                     } else {
                         egui::ScrollArea::vertical()
-                            .max_height(260.0)
+                            .max_height(280.0)
                             .show(ui, |ui| {
                                 for (display_index, snippet_index) in results.iter().enumerate() {
                                     let snippet = self.snippets[*snippet_index].clone();
                                     let selected = display_index == self.quick_selected_index;
 
                                     let title = if snippet.title.trim().is_empty() {
-                                        "Untitled"
+                                        "Untitled".to_string()
                                     } else {
-                                        &snippet.title
+                                        snippet.title.clone()
                                     };
 
                                     let meta = format!(
                                         "{}  |  {}",
                                         if snippet.language.trim().is_empty() {
-                                            "unknown"
+                                            "unknown".to_string()
                                         } else {
-                                            &snippet.language
+                                            snippet.language.clone()
                                         },
                                         Self::format_tags(&snippet.tags)
                                     );
 
                                     let preview = Self::code_preview(&snippet);
 
-                                    egui::Frame::group(ui.style()).show(ui, |ui| {
-                                        ui.set_width(ui.available_width());
+                                    let fill = if selected {
+                                        egui::Color32::from_rgb(235, 240, 255)
+                                    } else {
+                                        egui::Color32::from_rgb(255, 255, 255)
+                                    };
 
-                                        if ui
-                                            .selectable_label(
-                                                selected,
-                                                egui::RichText::new(title).strong(),
-                                            )
-                                            .clicked()
-                                        {
-                                            self.quick_selected_index = display_index;
-                                            self.activate_quick_search_selection();
-                                        }
+                                    egui::Frame::none()
+                                        .fill(fill)
+                                        .stroke(egui::Stroke::new(
+                                            1.0,
+                                            egui::Color32::from_rgb(232, 232, 227),
+                                        ))
+                                        .rounding(egui::Rounding::same(12.0))
+                                        .inner_margin(egui::Margin::same(12.0))
+                                        .show(ui, |ui| {
+                                            if ui
+                                                .selectable_label(
+                                                    selected,
+                                                    egui::RichText::new(title.clone())
+                                                        .size(14.0)
+                                                        .strong(),
+                                                )
+                                                .clicked()
+                                            {
+                                                self.quick_selected_index = display_index;
+                                                self.activate_quick_search_selection();
+                                            }
 
-                                        ui.label(
-                                            egui::RichText::new(meta)
-                                                .small()
-                                                .color(ui.visuals().weak_text_color()),
-                                        );
-
-                                        if !preview.is_empty() {
                                             ui.label(
-                                                egui::RichText::new(preview)
-                                                    .small()
-                                                    .italics()
-                                                    .color(ui.visuals().weak_text_color()),
+                                                egui::RichText::new(meta.clone())
+                                                    .size(12.0)
+                                                    .color(Self::secondary_text()),
                                             );
-                                        }
-                                    });
 
-                                    ui.add_space(4.0);
+                                            if !preview.is_empty() {
+                                                ui.label(
+                                                    egui::RichText::new(preview.clone())
+                                                        .size(12.0)
+                                                        .italics()
+                                                        .color(Self::secondary_text()),
+                                                );
+                                            }
+                                        });
+
+                                    ui.add_space(6.0);
                                 }
                             });
                     }
 
-                    ui.add_space(6.0);
-                    ui.separator();
-                    ui.add_space(4.0);
+                    ui.add_space(8.0);
 
                     ui.horizontal_wrapped(|ui| {
-                        ui.monospace("↑ ↓");
-                        ui.label("Navigate");
-                        ui.monospace("Enter");
-                        ui.label("Open");
-                        ui.monospace("Esc");
-                        ui.label("Close");
+                        ui.label(
+                            egui::RichText::new("↑ ↓ navigate   •   Enter open   •   Esc close")
+                                .size(12.0)
+                                .color(Self::secondary_text()),
+                        );
                     });
                 });
         }
@@ -941,12 +1158,12 @@ fn save_snippets(snippets: &[Snippet]) -> Result<(), String> {
 
 fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([1280.0, 820.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([1380.0, 860.0]),
         ..Default::default()
     };
 
     eframe::run_native(
-        "Snippet Manager v0.0.5",
+        "Snippet Manager v0.0.6",
         options,
         Box::new(|_cc| Ok(Box::new(SnippetApp::default()))),
     )
